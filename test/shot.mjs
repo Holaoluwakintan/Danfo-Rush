@@ -1,0 +1,14 @@
+import { chromium } from 'playwright-core';
+const url = process.argv[2] || 'http://127.0.0.1:4780/', out = process.argv[3] || '/tmp/danfo-shots';
+import fs from 'fs'; fs.mkdirSync(out, { recursive: true });
+const b = await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage({ viewport: { width: 360, height: 800 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+await p.goto(url + (url.includes('?') ? '&' : '?') + 'autopilot=1'); await p.waitForTimeout(1500);
+await p.screenshot({ path: out + '/home.png' });
+await p.evaluate(() => { document.querySelector('#streak').classList.remove('show'); __danfo.save.tutorialDone = true; }); await p.waitForTimeout(400);
+await p.click('#btnPlay', { force: true }); await p.waitForTimeout(6000);
+await p.screenshot({ path: out + '/play.png' });
+console.log(JSON.stringify(await p.evaluate(() => ({ mode: __danfo.game.mode, score: __danfo.game.score, fps: __danfo.game.fps, q: __danfo.game.quality }))));
+console.log('errors', errs);
+await b.close();

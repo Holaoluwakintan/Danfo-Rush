@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Danfo Rush: Lagos Traffic Runner</title>
+<meta name="description" content="Drive a yellow danfo through Lagos traffic. Dodge okadas, potholes and LASTMA, pick up passengers, top the weekly leaderboard. Free, plays offline.">
+<meta name="theme-color" content="#1a0b2e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Danfo Rush 🚌💨 Lagos traffic no dey smile">
+<meta property="og:description" content="Dodge okadas, potholes and LASTMA. Pick up passengers. Beat your friends on the weekly leaderboard.">
+<meta property="og:image" content="https://danfo-rush-ng.vercel.app/og.jpg">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:url" content="https://danfo-rush-ng.vercel.app/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/lilita-one-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/app.css?v=__V__">
+</head>
+<body>
+<div id="app">
+  <canvas id="cv" aria-label="Danfo Rush game"></canvas>
+  <div id="vignette"></div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden" aria-live="off">
+    <div class="hud-top">
+      <button id="btnPause" class="icon-btn" aria-label="Pause">❚❚</button>
+      <div class="hud-score"><div id="hScore">0</div><div id="hMult" class="mult">x1</div></div>
+      <div class="hud-coins"><span class="naira">₦</span><span id="hCoins">0</span></div>
+    </div>
+    <div class="hud-row2">
+      <div class="fuel"><span>⛽</span><div class="fuel-bar"><i id="hFuel"></i></div></div>
+      <div class="combo-bar"><i id="hCombo"></i></div>
+    </div>
+    <div id="hPowers" class="powers"></div>
+    <div id="hChallenge" class="hud-challenge hidden"></div>
+  </div>
+
+  <!-- HOME -->
+  <section id="home" class="screen show">
+    <div class="top-chips">
+      <div class="chip"><span class="naira">₦</span><b id="mCoins">0</b></div>
+      <button class="chip streak" id="btnStreak">🔥 <b id="mStreak">0</b></button>
+    </div>
+    <div class="logo">
+      <div class="logo-small">LAGOS TRAFFIC RUNNER</div>
+      <h1><span>DANFO</span><span>RUSH</span></h1>
+      <div class="tag">Lagos traffic no dey smile 🚌💨</div>
+    </div>
+    <div id="challengeBanner" class="challenge hidden"></div>
+    <div class="best">BEST <b id="mBest">0</b></div>
+    <button id="btnPlay" class="play-btn"><span>PLAY</span><small>Oya, enter!</small></button>
+    <nav class="menu-row">
+      <button data-open="missions"><i>🎯</i>Missions<em id="badgeMissions" class="badge hidden">!</em></button>
+      <button data-open="garage"><i>🚌</i>Garage</button>
+      <button data-open="board"><i>🏆</i>Ranks</button>
+      <button data-open="settings"><i>⚙️</i>Settings</button>
+    </nav>
+    <div class="install hidden" id="installBox"><button id="btnInstall">📲 Install on your phone</button></div>
+  </section>
+
+  <!-- MISSIONS -->
+  <section id="missions" class="sheet">
+    <header><h2>Daily Missions</h2><button class="close" aria-label="Close">✕</button></header>
+    <div class="sub" id="missionsReset"></div>
+    <div id="missionList"></div>
+    <div id="missionBonus" class="bonus"></div>
+    <h3>Daily streak</h3>
+    <div id="streakStrip" class="streak-strip"></div>
+  </section>
+
+  <!-- GARAGE -->
+  <section id="garage" class="sheet">
+    <header><h2>Garage</h2><div class="chip small"><span class="naira">₦</span><b class="gCoins">0</b></div><button class="close" aria-label="Close">✕</button></header>
+    <div class="tabs" data-tabs="garage"><button class="on" data-tab="buses">Buses</button><button data-tab="upgrades">Upgrades</button><button data-tab="shop">Shop</button></div>
+    <div class="tab-body" data-body="buses"><div id="skinGrid" class="skin-grid"></div></div>
+    <div class="tab-body hidden" data-body="upgrades"><div id="upList"></div></div>
+    <div class="tab-body hidden" data-body="shop"><div id="shopList"></div></div>
+  </section>
+
+  <!-- LEADERBOARD -->
+  <section id="board" class="sheet">
+    <header><h2>Leaderboard</h2><button class="close" aria-label="Close">✕</button></header>
+    <div class="tabs" data-tabs="board"><button class="on" data-tab="weekly">This week</button><button data-tab="all">All-time</button></div>
+    <div class="nick-row">Playing as <b id="bNick">Driver</b> <button id="btnNick" class="link">change</button></div>
+    <div id="boardList" class="board-list"></div>
+    <div id="boardMe" class="board-me"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="settings" class="sheet">
+    <header><h2>Settings</h2><button class="close" aria-label="Close">✕</button></header>
+    <label class="tog"><span>🔊 Sound effects</span><input type="checkbox" data-set="sfx"><i></i></label>
+    <label class="tog"><span>🎵 Music</span><input type="checkbox" data-set="music"><i></i></label>
+    <label class="tog"><span>📳 Haptics (vibration)</span><input type="checkbox" data-set="haptics"><i></i></label>
+    <label class="tog"><span>💥 Screen shake</span><input type="checkbox" data-set="shake"><i></i></label>
+    <button class="wide" id="btnNick2">✏️ Change nickname</button>
+    <button class="wide" id="btnTutorial">🎓 Replay tutorial</button>
+    <div class="credits">Danfo Rush v<span id="ver"></span> · Art drawn in code, every sound synthesised live. No real agency, union or agbero endorsed this game 😄<br>Controls: swipe ← → to change lane, ↑ to jump, ↓ to land. Keyboard: arrows / WASD, P to pause.</div>
+  </section>
+
+  <!-- PAUSE -->
+  <section id="pause" class="modal">
+    <div class="card">
+      <h2>Paused</h2>
+      <button class="big" id="btnResume">▶ Continue</button>
+      <div class="row"><button id="btnPauseSfx" class="pill">🔊 Sound</button><button id="btnPauseMusic" class="pill">🎵 Music</button></div>
+      <div class="row"><button id="btnRestart" class="ghost">↻ Restart</button><button id="btnQuit" class="ghost">⌂ Home</button></div>
+    </div>
+  </section>
+
+  <!-- GAME OVER -->
+  <section id="over" class="modal">
+    <div class="card over-card">
+      <div class="over-line" id="oLine">Wahala dey!</div>
+      <div class="newbest hidden" id="oNew">NEW BEST! 🎉</div>
+      <div class="over-score" id="oScore">0</div>
+      <div class="over-stats">
+        <div><b id="oDist">0</b><span>metres</span></div>
+        <div><b id="oCoins">0</b><span>naira</span></div>
+        <div><b id="oPass">0</b><span>passengers</span></div>
+        <div><b id="oNear">0</b><span>near misses</span></div>
+      </div>
+      <div id="oRank" class="over-rank"></div>
+      <div id="oMissions"></div>
+      <div id="oContinue" class="continue">
+        <button id="btnCont" class="cont">↺ Continue for ₦<span id="contCost">500</span></button>
+        <button id="btnAd" class="cont ad" disabled>▶ Watch ad <small>coming soon</small></button>
+      </div>
+      <button class="big" id="btnAgain">ONE MORE RUN ↻</button>
+      <div class="row">
+        <button id="btnShare" class="pill wa">Share score</button>
+        <button id="btnChallenge" class="pill">⚔️ Challenge</button>
+        <button id="btnHome" class="pill ghost">⌂</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STREAK -->
+  <section id="streak" class="modal">
+    <div class="card">
+      <div class="streak-fire">🔥</div>
+      <h2 id="sTitle">Day 1 streak!</h2>
+      <p id="sText">Come back every day. Day 7 pays ₦1,000.</p>
+      <div id="sStrip" class="streak-strip"></div>
+      <button class="big" id="btnClaim">Collect ₦50</button>
+    </div>
+  </section>
+
+  <!-- NICKNAME -->
+  <section id="nick" class="modal">
+    <div class="card">
+      <h2>Your driver name</h2>
+      <p>This shows on the leaderboard. No sign-up needed.</p>
+      <input id="nickInput" maxlength="16" autocomplete="off" placeholder="e.g. Oluwaseun_Driver">
+      <button class="big" id="btnNickSave">Save</button>
+    </div>
+  </section>
+
+  <div id="tut" class="tut hidden"><div class="tut-ico" id="tutIco">👆</div><div class="tut-txt" id="tutTxt"></div></div>
+  <div id="toasts"></div>
+</div>
+<noscript>Danfo Rush needs JavaScript.</noscript>
+<script src="/app.js?v=__V__" defer></script>
+</body>
+</html>

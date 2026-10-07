@@ -1,0 +1,16 @@
+
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.env*
+*.jks
+*.keystore
+keystore.properties
+local.properties
+*.bak-oldvercel
+.vercel/
+build/
+.gradle/
+*.apk
+*.aab
