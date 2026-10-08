@@ -1,6 +1,6 @@
-// Every sound is synthesised live with WebAudio: no audio files, nothing copyrighted.
+// SFX + music are synthesised live with WebAudio. Conductor voice lines are tiny mp3s (public/voice), fetched lazily on the first run.
 let ac = null, master = null, sfxBus = null, musBus = null, noiseBuf = null;
-let sfxOn = true, musicOn = true, musicTimer = null, nextNote = 0, step = 0, intensity = 0;
+let sfxOn = true, musicOn = true, voiceOn = true, voiceBus = null, musicTimer = null, nextNote = 0, step = 0, intensity = 0;
 
 export function initAudio() {
   if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
@@ -10,6 +10,7 @@ export function initAudio() {
   const comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
   master.connect(comp); comp.connect(ac.destination);
   sfxBus = ac.createGain(); sfxBus.gain.value = sfxOn ? 0.9 : 0; sfxBus.connect(master);
+  voiceBus = ac.createGain(); voiceBus.gain.value = voiceOn ? 1.15 : 0; voiceBus.connect(master);
   musBus = ac.createGain(); musBus.gain.value = musicOn ? 0.32 : 0; musBus.connect(master);
   noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.6, ac.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -74,3 +75,29 @@ export function startMusic() { if (!ac || musicTimer) return; nextNote = ac.curr
 export function stopMusic() { clearInterval(musicTimer); musicTimer = null; }
 export function suspendAudio() { if (ac && ac.state === 'running') ac.suspend(); }
 export function resumeAudio() { if (ac && ac.state === 'suspended') ac.resume(); }
+
+// --- conductor voice (lazy: nothing is fetched until the first run starts) ---
+export const VOICE_LINES = { oshodi: 'Oshodi! Oshodi!', owa: 'Owa! Owa!', change: 'Enter with your change o!', wole: 'Wole! Wole!', owao: 'Owa o!',
+  near: 'Ah! You wan kill me?!', near2: 'Driver! Gently o!', cms: 'CMS! Obalende!', lekki: 'Lekki! Ajah!', third: 'Third Mainland! Straight!', go: 'Oya, make we go!' };
+const vbuf = {}; let vLoading = false, vLast = -99, vSrc = null;
+export const voiceStats = { loaded: 0, played: 0, last: null };
+export function setVoice(on) { voiceOn = on; if (voiceBus) voiceBus.gain.value = on ? 1.15 : 0; if (!on && vSrc) { try { vSrc.stop(); } catch (e) {} vSrc = null; } }
+export function loadVoices() {
+  if (vLoading || !ac || !voiceOn) return; vLoading = true;
+  const keys = Object.keys(VOICE_LINES); let i = 0;
+  const next = () => { // one at a time, low priority: never competes with the first frames
+    if (i >= keys.length) return; const k = keys[i++];
+    fetch('/voice/' + k + '.mp3').then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+      .then(b => new Promise((res, rej) => ac.decodeAudioData(b, res, rej)))
+      .then(buf => { vbuf[k] = buf; voiceStats.loaded++; }).catch(() => {}).finally(() => setTimeout(next, 120));
+  };
+  next();
+}
+// Plays a line if it is loaded, voice is on, and the last line ended long enough ago. Returns true when it played.
+export function voice(key, minGap = 6, force = false) {
+  if (!ac || !voiceOn || !vbuf[key]) return false;
+  const now = ac.currentTime; if (!force && now - vLast < minGap) return false;
+  if (vSrc) { try { vSrc.stop(); } catch (e) {} }
+  const s = ac.createBufferSource(); s.buffer = vbuf[key]; s.connect(voiceBus); s.start(); vSrc = s;
+  vLast = now + vbuf[key].duration; voiceStats.played++; voiceStats.last = key; return true;
+}

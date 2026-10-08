@@ -27,7 +27,7 @@
   <!-- HUD -->
   <div id="hud" class="hidden" aria-live="off">
     <div class="hud-top">
-      <button id="btnPause" class="icon-btn" aria-label="Pause">❚❚</button>
+      <div class="hud-btns"><button id="btnPause" class="icon-btn" aria-label="Pause">❚❚</button><button id="btnVoice" class="icon-btn" aria-label="Mute conductor voice">🗣️</button></div>
       <div class="hud-score"><div id="hScore">0</div><div id="hMult" class="mult">x1</div></div>
       <div class="hud-coins"><span class="naira">₦</span><span id="hCoins">0</span></div>
     </div>
@@ -64,8 +64,9 @@
 
   <!-- MISSIONS -->
   <section id="missions" class="sheet">
-    <header><h2>Daily Missions</h2><button class="close" aria-label="Close">✕</button></header>
+    <header><h2>Daily Challenges</h2><button class="close" aria-label="Close">✕</button></header>
     <div class="sub" id="missionsReset"></div>
+    <div id="streakBonus" class="streak-bonus"></div>
     <div id="missionList"></div>
     <div id="missionBonus" class="bonus"></div>
     <h3>Daily streak</h3>
@@ -95,6 +96,7 @@
     <header><h2>Settings</h2><button class="close" aria-label="Close">✕</button></header>
     <label class="tog"><span>🔊 Sound effects</span><input type="checkbox" data-set="sfx"><i></i></label>
     <label class="tog"><span>🎵 Music</span><input type="checkbox" data-set="music"><i></i></label>
+    <label class="tog"><span>🗣️ Conductor voice</span><input type="checkbox" data-set="voice"><i></i></label>
     <label class="tog"><span>📳 Haptics (vibration)</span><input type="checkbox" data-set="haptics"><i></i></label>
     <label class="tog"><span>💥 Screen shake</span><input type="checkbox" data-set="shake"><i></i></label>
     <button class="wide" id="btnNick2">✏️ Change nickname</button>
@@ -107,7 +109,7 @@
     <div class="card">
       <h2>Paused</h2>
       <button class="big" id="btnResume">▶ Continue</button>
-      <div class="row"><button id="btnPauseSfx" class="pill">🔊 Sound</button><button id="btnPauseMusic" class="pill">🎵 Music</button></div>
+      <div class="row"><button id="btnPauseSfx" class="pill">🔊 Sound</button><button id="btnPauseMusic" class="pill">🎵 Music</button><button id="btnPauseVoice" class="pill">🗣️ Voice</button></div>
       <div class="row"><button id="btnRestart" class="ghost">↻ Restart</button><button id="btnQuit" class="ghost">⌂ Home</button></div>
     </div>
   </section>
@@ -162,6 +164,8 @@
 
   <div id="tut" class="tut hidden"><div class="tut-ico" id="tutIco">👆</div><div class="tut-txt" id="tutTxt"></div></div>
   <div id="toasts"></div>
+  <div id="zoneBanner" class="zone-banner" aria-live="polite"><div class="zb-e"></div><div class="zb-n"></div><div class="zb-s"></div></div>
+  <div id="pwHint" class="pw-hint"><span class="ph-i"></span><span class="ph-t"></span></div>
 </div>
 <noscript>Danfo Rush needs JavaScript.</noscript>
 <script src="/app.js?v=__V__" defer></script>

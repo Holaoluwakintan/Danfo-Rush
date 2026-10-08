@@ -1,0 +1,27 @@
+// Live smoke check for v1.1 on the production URL (no leaderboard submit).
+import { chromium } from 'playwright-core';
+const url = process.argv[2] || 'https://danfo-rush-ng.vercel.app/';
+const b = await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+const ctx = await b.newContext({ viewport: { width: 360, height: 800 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+const out = {}; const ev = (f, a) => p.evaluate(f, a);
+await p.goto(url, { waitUntil: 'load' }); await p.waitForFunction(() => window.__danfo); await p.waitForTimeout(900);
+out.version = await ev(() => document.querySelector('#ver') && (window.__danfo, document.querySelector('#ver').textContent));
+await ev(() => { document.querySelector('#streak').classList.remove('show'); __danfo.save.tutorialDone = true; }); await p.waitForTimeout(500);
+out.voiceBeforeRun = await ev(() => __danfo.voiceStats.loaded);
+await p.click('#btnPlay', { force: true }); await p.waitForFunction(() => __danfo.game.mode === 'play');
+await p.waitForFunction(() => __danfo.voiceStats.loaded >= 11, null, { timeout: 15000 }).catch(() => {});
+out.voiceAfterRun = await ev(() => __danfo.voiceStats.loaded);
+await ev(() => { const g = __danfo.game; g.objs.length = 0; g.invuln = 99; g.dist = 1405 * 30; }); await p.waitForTimeout(400);
+out.zone = await ev(() => ({ banner: document.querySelector('#zoneBanner .zb-n').textContent, sign: __danfo.game.gantry && __danfo.game.gantry.text }));
+await ev(() => { const g = __danfo.game; g.power('agbero'); g.power('double'); g.power('express'); }); await p.waitForTimeout(500);
+out.hud = await ev(() => document.querySelector('#hPowers').textContent);
+out.challenges = await ev(() => __danfo.missions().list.map(m => m.id));
+const sw = await ev(async () => { const r = await navigator.serviceWorker.ready; return !!r.active; });
+out.swActive = sw; await p.waitForTimeout(1500);
+await ctx.setOffline(true); await p.reload({ waitUntil: 'load' }).catch(e => out.offlineErr = e.message); await p.waitForTimeout(800);
+out.offlineBoots = await ev(() => !!(window.__danfo && document.querySelector('#btnPlay'))).catch(() => false);
+out.offlineVoiceCached = await ev(async () => { try { const r = await fetch('/voice/oshodi.mp3'); return r.ok; } catch (e) { return false; } }).catch(() => false);
+out.errors = errs.filter(e => !/net::ERR_INTERNET_DISCONNECTED|Failed to fetch|rpc/.test(e));
+console.log(JSON.stringify(out, null, 1));
+await b.close();

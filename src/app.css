@@ -178,3 +178,21 @@ button:focus-visible,input:focus-visible,label.tog:focus-within{outline:3px soli
 @media (min-height:760px){.logo{margin-top:9vh}}
 
 #app.on-home #toasts{top:auto;bottom:calc(env(safe-area-inset-bottom) + 250px)}
+
+.hud-btns{display:flex;gap:6px}
+.pw .tbar{position:absolute;left:4px;right:4px;bottom:-22px;height:4px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
+.pw .tbar i{display:block;height:100%;border-radius:3px}
+.powers{margin-bottom:14px}
+.zone-banner{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 196px);transform:translate(-50%,-30px) scale(.9);opacity:0;pointer-events:none;z-index:6;text-align:center;padding:12px 22px 10px;border-radius:20px;background:linear-gradient(180deg,#0B6B3A,#0a5530);border:3px solid #fff;box-shadow:0 10px 30px rgba(0,0,0,.45);min-width:62%;max-width:90%;transition:opacity .25s,transform .35s var(--ease)}
+.zone-banner.show{opacity:1;transform:translate(-50%,0) scale(1)}
+.zone-banner .zb-e{font-size:28px;line-height:1}
+.zone-banner .zb-n{font-family:var(--disp);font-size:28px;letter-spacing:.5px;color:#fff;text-transform:uppercase;line-height:1.1}
+.zone-banner .zb-s{font-size:13px;color:#d6f5e3;margin-top:3px}
+.pw-hint{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 64px);transform:translate(-50%,20px);opacity:0;pointer-events:none;z-index:6;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:16px;background:rgba(10,4,24,.88);border:2px solid #fff;max-width:92%;transition:opacity .25s,transform .3s var(--ease)}
+.pw-hint.show{opacity:1;transform:translate(-50%,0)}
+.pw-hint .ph-i{font-size:26px}.pw-hint .ph-t{font-family:var(--disp);font-size:16px;line-height:1.2}
+.streak-bonus{padding:10px 12px;margin-bottom:10px;border-radius:14px;background:rgba(255,120,40,.14);border:1px solid rgba(255,140,60,.45);font-size:14px;text-align:center}
+.mission .claim.ready{animation:claimpulse 1.2s ease-in-out infinite;background:linear-gradient(90deg,#00a152,#00d26a);color:#fff}
+@keyframes claimpulse{50%{transform:scale(1.07)}}
+.claimbtn{margin-top:8px;padding:10px 16px;border-radius:14px;background:linear-gradient(90deg,#00a152,#00d26a);color:#fff;font-family:var(--disp);font-size:17px;width:100%}
+#app.over-open #toasts{top:auto;bottom:calc(env(safe-area-inset-bottom) + 12px)}

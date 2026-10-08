@@ -1,7 +1,7 @@
 import { Game, DEATH_LINES } from './game.js';
 import * as A from './art.js';
-import { initAudio, sfx, setSfx, setMusic, startMusic, suspendAudio, resumeAudio } from './audio.js';
-import { CONFIG, save, persist, checkStreak, claimStreak, STREAK_REWARDS, missions, missionText, applyRunToMissions, liveMissionCheck, claimMission, ALL_BONUS, UPGRADES, MAX_UP, upCost, powerDur, buyUpgrade, buySkin, currentSkin, lagosDay } from './store.js';
+import { initAudio, sfx, setSfx, setMusic, setVoice, loadVoices, voiceStats, startMusic, suspendAudio, resumeAudio } from './audio.js';
+import { CONFIG, save, persist, checkStreak, claimStreak, STREAK_REWARDS, missions, missionText, applyRunToMissions, liveMissionCheck, claimMission, ALL_BONUS, UPGRADES, MAX_UP, upCost, powerDur, buyUpgrade, buySkin, currentSkin, lagosDay, streakMult, withStreak, missionIcon, unclaimedCount } from './store.js';
 import { startRun, queueRun, flush, leaderboard } from './net.js';
 import { fmt, shareScore, shareChallenge } from './share.js';
 
@@ -12,7 +12,7 @@ const app = document.getElementById('app');
 let runToken = null, lastStats = null, contCount = 0, challenge = null;
 
 const game = new Game($('#cv'), { onHud: hud, onEvent, onGameOver });
-window.__danfo = { game, save, flush, leaderboard }; // used by the automated playtest
+window.__danfo = { game, save, flush, leaderboard, voiceStats, missions }; // used by the automated playtest
 game.reduced = reduced; game.forceAuto = params.has('autopilot');
 applySettings();
 
@@ -52,12 +52,12 @@ function renderHome() {
   if (challenge) { $('#challengeBanner').classList.remove('hidden'); $('#challengeBanner').textContent = `⚔️ ${challenge.n} dey challenge you: beat ${fmt(challenge.s)}!`; }
 }
 function goHome() {
-  modal('over', false); modal('pause', false); closeSheets(); game.reset(true); game.t0done = false; show('home'); renderHome();
+  modal('over', false); modal('pause', false); closeSheets(); app.classList.remove('over-open'); game.reset(true); game.t0done = false; show('home'); renderHome();
 }
 
 // ---------- run ----------
 function play(tutorial) {
-  initAudio(); startMusic(); closeSheets(); modal('over', false); modal('pause', false);
+  initAudio(); loadVoices(); startMusic(); closeSheets(); modal('over', false); modal('pause', false); app.classList.remove('over-open'); $('#zoneBanner').classList.remove('show');
   const tut = tutorial || !save.tutorialDone;
   Object.keys(game.durs).forEach(k => game.durs[k] = powerDur(k));
   game.skin = currentSkin(); game.start(tut); contCount = 0; show('hud'); hudCache = {};
@@ -83,17 +83,31 @@ function hud(g) {
     const act = Object.keys(g.pw).filter(k => g.pw[k] > 0); const key = act.map(k => k + Math.ceil(g.pw[k] * 4)).join();
     if (hudCache.pw !== key) {
       hudCache.pw = key;
-      $('#hPowers').innerHTML = act.map(k => { const p = g.pw[k] / g.durs[k], col = A.POWERS[k].color; return `<div class="pw" style="color:${col}"><svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="20" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="4"/><circle cx="23" cy="23" r="20" fill="none" stroke="${col}" stroke-width="4" stroke-dasharray="${(p * 125.7).toFixed(1)} 200" stroke-linecap="round"/></svg>${{ shield: '💧', magnet: '🧲', express: '⚡', jerry: '⛽' }[k]}<small>${A.POWERS[k].short}</small></div>`; }).join('');
+      $('#hPowers').innerHTML = act.map(k => { const p = Math.min(1, g.pw[k] / g.durs[k]), col = A.POWERS[k].color; return `<div class="pw" style="color:${col}"><svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="20" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="4"/><circle cx="23" cy="23" r="20" fill="none" stroke="${col}" stroke-width="4" stroke-dasharray="${(p * 125.7).toFixed(1)} 200" stroke-linecap="round"/></svg>${A.POWER_EMOJI[k]}<small>${A.POWERS[k].short}</small><b class="tbar"><i style="width:${(p * 100).toFixed(0)}%;background:${col}"></i></b></div>`; }).join('');
     }
     if (challenge) { const left = challenge.s - Math.floor(g.score); setText('hChallenge', left > 0 ? `⚔️ ${fmt(left)} more to beat ${challenge.n}` : `🏆 You don pass ${challenge.n}!`); }
     const hits = liveMissionCheck(g.stats()); for (const m of hits) toast('🎯 Mission done: ' + missionText(m), 'good');
   }
 }
 function onEvent(type, d) {
-  if (type === 'zone') toast((d.id === 'bridge' ? '🌉 ' : d.id === 'lekki' ? '🌴 ' : d.id === 'market' ? '🛒 ' : '📍 ') + d.name, 'zone');
+  if (type === 'zone') zoneBanner(d);
   else if (type === 'toast') toast(d.text, d.kind);
-  else if (type === 'power') toast({ shield: '💧 Pure Water shield!', magnet: '🧲 Agbero-free magnet!', express: '⚡ Express lane!', jerry: '⛽ Fuel scarcity no fit you!' }[d.type], 'good');
+  else if (type === 'power') toast({ shield: '💧 Pure Water shield!', magnet: '🧲 Agbero-free magnet!', express: '💡 NEPA bring light! No crash!', jerry: '⛽ Fuel scarcity no fit you!', agbero: '💪 Agbero don clear road!', double: '💰 Double fare! 2× naira!' }[d.type], 'good');
+  else if (type === 'powerSeen') powerHint(d.type);
+  if (type === 'power' && save.seenPowers && !save.seenPowers.includes(d.type)) { save.seenPowers.push(d.type); persist(); } // grabbed it already: no tip needed later
   else if (type === 'tutorial') tutorial(d);
+}
+let bannerT = 0;
+function zoneBanner(d) {
+  const el = $('#zoneBanner'); el.querySelector('.zb-e').textContent = d.emoji || '📍'; el.querySelector('.zb-n').textContent = d.name; el.querySelector('.zb-s').textContent = d.sub || '';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); clearTimeout(bannerT); bannerT = setTimeout(() => el.classList.remove('show'), d.first ? 2200 : 2800);
+}
+let hintT = 0;
+function powerHint(t) { // first time each power-up shows up on the road: a one-line tip
+  if (!save.seenPowers) save.seenPowers = []; if (save.seenPowers.includes(t)) return;
+  save.seenPowers.push(t); persist();
+  const el = $('#pwHint'); el.querySelector('.ph-i').textContent = A.POWER_EMOJI[t]; el.querySelector('.ph-t').textContent = A.POWER_HINT[t]; el.style.borderColor = A.POWERS[t].color;
+  el.classList.add('show'); clearTimeout(hintT); hintT = setTimeout(() => el.classList.remove('show'), 3600);
 }
 function tutorial(d) {
   const box = $('#tut'), ico = $('#tutIco'), txt = $('#tutTxt');
@@ -109,6 +123,7 @@ function tutorial(d) {
 // ---------- game over ----------
 function onGameOver(st) {
   lastStats = st; suspendLoopMusic();
+  $('#toasts').innerHTML = ''; app.classList.add('over-open'); $('#zoneBanner').classList.remove('show'); $('#pwHint').classList.remove('show'); // nothing from the run may sit on top of the game-over card
   const pool = DEATH_LINES[st.reason] || DEATH_LINES.vehicle;
   $('#oLine').textContent = pool[(Math.random() * pool.length) | 0];
   const newBest = st.score > save.best;
@@ -129,7 +144,10 @@ function finalizeRun() { // bank coins, stats, missions, and submit (once per ru
   save.coins += st.coins; save.totalRuns++; save.totalDistance += st.distance; save.totalPassengers += st.passengers;
   if (st.score > save.best) save.best = st.score; persist();
   const done = applyRunToMissions(st);
-  if (done.length) $('#oMissions').innerHTML = done.map(m => `<div class="mdone">🎯 Mission complete: ${missionText(m)} (+₦${m.reward} to claim)</div>`).join('');
+  if (done.length || unclaimedCount()) {
+    $('#oMissions').innerHTML = done.map(m => `<div class="mdone">🎯 Challenge done: ${missionText(m)}</div>`).join('') + `<button class="claimbtn" id="oClaim">🎁 Claim rewards (${unclaimedCount()})</button>`;
+    $('#oClaim').onclick = () => { finalizeRunSafe(); openSheet('missions'); };
+  }
   if (!save.nick) { save.nick = 'Driver' + Math.floor(100 + Math.random() * 900); persist(); } // never block the restart with a form
   submit(st);
 }
@@ -172,7 +190,11 @@ function resumeGame() { modal('pause', false); game.resume(); }
 $('#btnPause').onclick = pauseGame; $('#btnResume').onclick = resumeGame;
 $('#btnRestart').onclick = () => { modal('pause', false); play(false); };
 $('#btnQuit').onclick = () => { modal('pause', false); goHome(); };
-function syncPausePills() { $('#btnPauseSfx').classList.toggle('off', !save.settings.sfx); $('#btnPauseMusic').classList.toggle('off', !save.settings.music); }
+function syncPausePills() { $('#btnPauseSfx').classList.toggle('off', !save.settings.sfx); $('#btnPauseMusic').classList.toggle('off', !save.settings.music); $('#btnPauseVoice').classList.toggle('off', save.settings.voice === false); }
+$('#btnPauseVoice').onclick = () => { save.settings.voice = save.settings.voice === false; persist(); applySettings(); syncPausePills(); };
+$('#btnVoice').onclick = () => { initAudio(); save.settings.voice = save.settings.voice === false; persist(); applySettings(); syncVoiceBtn(); toast(save.settings.voice ? '🗣️ Conductor voice on' : '🔇 Conductor voice off'); };
+function syncVoiceBtn() { const b = $('#btnVoice'); b.textContent = save.settings.voice === false ? '🔇' : '🗣️'; b.setAttribute('aria-label', save.settings.voice === false ? 'Turn conductor voice on' : 'Mute conductor voice'); }
+syncVoiceBtn();
 $('#btnPauseSfx').onclick = () => { save.settings.sfx = !save.settings.sfx; persist(); applySettings(); syncPausePills(); };
 $('#btnPauseMusic').onclick = () => { save.settings.music = !save.settings.music; persist(); applySettings(); syncPausePills(); };
 document.addEventListener('visibilitychange', () => { if (document.hidden) { pauseGame(); suspendAudio(); } else resumeAudio(); });
@@ -204,15 +226,17 @@ window.addEventListener('keydown', e => {
 });
 
 // ---------- missions + streak ----------
-const MI = { coins: '💰', pass: '🧍', near: '😱', dist: '🛣️', jumps: '🕳️', power: '⚡', score: '⭐', combo: '🔥', runs: '🔁' };
+const MI = new Proxy({}, { get: (_, k) => missionIcon(k) });
 function renderMissions() {
   const ms = missions();
   const ms2 = 864e5 - ((Date.now() + 3600e3) % 864e5); $('#missionsReset').textContent = `New missions in ${Math.floor(ms2 / 36e5)}h ${Math.floor(ms2 % 36e5 / 6e4)}m`;
-  $('#missionList').innerHTML = ms.list.map((m, i) => `<div class="mission ${m.done ? 'done' : ''}"><div class="mi">${MI[m.id]}</div><div class="mt"><b>${missionText(m)}</b><div class="prog"><i style="width:${Math.round(m.prog / m.n * 100)}%"></i></div></div><button class="claim" data-m="${i}" ${m.done && !m.claimed ? '' : 'disabled'}>${m.claimed ? '✓' : '₦' + m.reward}</button></div>`).join('');
+  $('#missionList').innerHTML = ms.list.map((m, i) => `<div class="mission ${m.done ? 'done' : ''}"><div class="mi">${MI[m.id]}</div><div class="mt"><b>${missionText(m)}</b><div class="prog"><i style="width:${Math.round(m.prog / m.n * 100)}%"></i></div></div><button class="claim ${m.done && !m.claimed ? 'ready' : ''}" data-m="${i}" ${m.done && !m.claimed ? '' : 'disabled'}>${m.claimed ? '✓' : (m.done ? 'Claim ' : '') + '₦' + fmt(withStreak(m.reward))}</button></div>`).join('');
+  const sm = streakMult(); $('#streakBonus').innerHTML = sm > 1 ? `🔥 <b>${save.streak}-day streak</b>: every reward +${Math.round((sm - 1) * 100)}%` : '🔥 Come back daily: each streak day adds +10% to every reward';
   $$('#missionList .claim').forEach(b => b.onclick = () => { const got = claimMission(ms.list[+b.dataset.m]); if (got) { sfx.buy(); toast(`+₦${got} collected!`, 'good'); renderMissions(); renderHome(); } });
   const all = ms.list.every(m => m.claimed);
-  $('#missionBonus').innerHTML = ms.bonusClaimed ? 'All 3 done today. Champion! 👑' : all ? `All 3 done! <button id="btnBonus">Claim ₦${ALL_BONUS}</button>` : `Finish all 3 for a ₦${ALL_BONUS} bonus`;
-  const bb = $('#btnBonus'); if (bb) bb.onclick = () => { ms.bonusClaimed = true; save.coins += ALL_BONUS; persist(); sfx.buy(); toast(`+₦${ALL_BONUS} bonus!`, 'good'); renderMissions(); renderHome(); };
+  const AB = withStreak(ALL_BONUS);
+  $('#missionBonus').innerHTML = ms.bonusClaimed ? 'All 3 done today. Champion! 👑' : all ? `All 3 done! <button id="btnBonus">Claim ₦${fmt(AB)}</button>` : `Finish all 3 for a ₦${fmt(AB)} bonus`;
+  const bb = $('#btnBonus'); if (bb) bb.onclick = () => { ms.bonusClaimed = true; save.coins += AB; persist(); sfx.buy(); toast(`+₦${fmt(AB)} bonus!`, 'good'); renderMissions(); renderHome(); };
   renderStrip($('#streakStrip'), save.lastClaim === lagosDay() ? save.streak : -1);
 }
 function renderStrip(el, todayDay) {
@@ -264,7 +288,7 @@ async function renderBoard() {
   if (!d.rows.length) { list.innerHTML = `<div class="empty">No scores ${tab === 'weekly' ? 'this week' : ''} yet.<br>Be the first name on the board! 🏁</div>`; }
   else list.innerHTML = d.rows.map((r, i) => `<div class="brow ${r.me ? 'me' : ''} ${r.rank === 1 ? 'top1' : ''}" style="animation-delay:${Math.min(i, 12) * 30}ms"><div class="rk">${r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</div><div class="nk"></div><div class="sc">${fmt(r.score)}</div></div>`).join('');
   list.querySelectorAll('.nk').forEach((n, i) => n.textContent = d.rows[i].nick); // textContent: nicknames never become HTML
-  $('#boardMe').textContent = (d.stale ? '📴 Offline, showing saved board. ' : '') + (d.me ? `You: #${d.me.rank} with ${fmt(d.me.score)}` : 'Play a run to get on the board') + (tab === 'weekly' ? ` · ${d.players} drivers this week · resets Monday` : '') + (save.pending.length ? ` · ${save.pending.length} run(s) waiting to sync` : '');
+  $('#boardMe').textContent = (d.stale ? '📴 Offline, showing saved board. ' : '') + (d.me ? `You: #${d.me.rank} with ${fmt(d.me.score)}` : 'Play a run to get on the board') + (tab === 'weekly' ? ` · ${d.players} ${d.players === 1 ? 'driver' : 'drivers'} this week · resets Monday` : '') + (save.pending.length ? ` · ${save.pending.length} run(s) waiting to sync` : '');
 }
 function askNick(after) {
   modal('nick', true); const inp = $('#nickInput'); inp.value = save.nick || ''; setTimeout(() => inp.focus(), 150);
@@ -275,7 +299,7 @@ $('#btnNick').onclick = () => askNick(); $('#btnNick2').onclick = () => askNick(
 // ---------- settings ----------
 function renderSettings() { $$('[data-set]').forEach(i => { i.checked = !!save.settings[i.dataset.set]; }); $('#ver').textContent = CONFIG.VERSION; }
 $$('[data-set]').forEach(i => i.onchange = () => { save.settings[i.dataset.set] = i.checked; persist(); applySettings(); if (i.checked) { initAudio(); sfx.click(); } if (i.dataset.set === 'haptics' && i.checked && navigator.vibrate) navigator.vibrate(30); });
-function applySettings() { setSfx(save.settings.sfx); setMusic(save.settings.music); game.haptics = save.settings.haptics; game.shakeOn = save.settings.shake; }
+function applySettings() { setSfx(save.settings.sfx); setMusic(save.settings.music); setVoice(save.settings.voice !== false); if (save.settings.voice !== false) loadVoices(); game.haptics = save.settings.haptics; game.shakeOn = save.settings.shake; }
 
 // ---------- challenge links ----------
 (function () { const s = parseInt(params.get('c'), 10), n = (params.get('n') || 'Your friend').replace(/[^A-Za-z0-9 _.\-]/g, '').slice(0, 16); if (s > 0 && s < 1e7) challenge = { s, n: n || 'Your friend' }; })();

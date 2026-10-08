@@ -31,7 +31,7 @@ function shade(hex, f) { // f<0 darker, f>0 lighter
 
 // ---------- vehicles (front points UP) ----------
 export function busSprite(skin) {
-  const L = skin.long ? 128 : 118;
+  const L = skin.long ? 150 : 118;
   return sprite('bus_' + skin.id, 64, L, (g, w, h) => {
     const x = 4, y = 2, bw = w - 8, bh = h - 4;
     // mirrors
@@ -233,7 +233,18 @@ export const POWERS = {
   shield: { name: 'Pure Water Shield', color: '#29B6F6', short: 'Shield' },
   jerry: { name: 'Fuel-Scarcity-Proof Jerrycan', color: '#FFB300', short: 'Full Tank' },
   magnet: { name: 'Agbero-Free Magnet', color: '#EF5350', short: 'Magnet' },
-  express: { name: 'Express Lane', color: '#00E676', short: 'Express' },
+  express: { name: 'NEPA Light', color: '#FFEB3B', short: 'NEPA Light' },
+  agbero: { name: 'Agbero', color: '#FF7043', short: 'Agbero' },
+  double: { name: 'Double Fare', color: '#E040FB', short: '2× Fare' },
+};
+export const POWER_EMOJI = { shield: '💧', magnet: '🧲', express: '💡', jerry: '⛽', agbero: '💪', double: '💰' };
+export const POWER_HINT = {
+  shield: 'Pure Water Shield: one crash no go end your run',
+  magnet: 'Magnet: naira fly come meet you',
+  express: 'NEPA Light: speed boost + nothing fit touch you!',
+  jerry: 'Jerrycan: free fuel for some seconds',
+  agbero: 'Agbero: clears every car in front of you',
+  double: 'Double Fare: every naira and passenger pays 2×',
 };
 export function powerIcon(g, type, cx, cy, s) {
   g.save(); g.translate(cx, cy); g.scale(s, s);
@@ -251,9 +262,20 @@ export function powerIcon(g, type, cx, cy, s) {
     g.lineWidth = 7; g.lineCap = 'butt'; g.strokeStyle = '#E53935'; g.beginPath(); g.arc(0, -1, 8, Math.PI, 0); g.stroke();
     g.beginPath(); g.moveTo(-8, -1); g.lineTo(-8, 7); g.moveTo(8, -1); g.lineTo(8, 7); g.stroke();
     g.strokeStyle = '#ECEFF1'; g.beginPath(); g.moveTo(-8, 7); g.lineTo(-8, 12); g.moveTo(8, 7); g.lineTo(8, 12); g.stroke();
-  } else if (type === 'express') {
-    g.fillStyle = '#00E676'; g.beginPath(); g.moveTo(-10, 2); g.lineTo(0, -12); g.lineTo(10, 2); g.lineTo(4, 2); g.lineTo(4, 12); g.lineTo(-4, 12); g.lineTo(-4, 2); g.closePath(); g.fill();
-    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(-5, -1); g.lineTo(0, -8); g.lineTo(5, -1); g.closePath(); g.fill();
+  } else if (type === 'express') { // NEPA light bulb
+    g.fillStyle = '#FFF59D'; g.beginPath(); g.arc(0, -3, 9, 0, 7); g.fill();
+    g.fillStyle = '#FFEB3B'; g.beginPath(); g.arc(0, -3, 6.5, 0, 7); g.fill();
+    g.fillStyle = '#9E9E9E'; g.fillRect(-4.5, 5, 9, 3); g.fillStyle = '#757575'; g.fillRect(-3.5, 8, 7, 3);
+    g.strokeStyle = '#FFA000'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(-2.5, 2); g.lineTo(-1, -4); g.lineTo(1, -1); g.lineTo(2.5, -5); g.stroke();
+    g.strokeStyle = '#FFF176'; g.lineWidth = 1.6; for (const a of [-2.4, -1.57, -0.7]) { g.beginPath(); g.moveTo(Math.cos(a) * 11, -3 + Math.sin(a) * 11); g.lineTo(Math.cos(a) * 14, -3 + Math.sin(a) * 14); g.stroke(); }
+  } else if (type === 'agbero') { // agbero's red beret + whip clearing the road
+    g.fillStyle = '#5D4037'; g.beginPath(); g.arc(0, 2, 8, 0, 7); g.fill();
+    g.fillStyle = '#E53935'; g.beginPath(); g.ellipse(-1, -5, 10, 4.5, -0.15, 0, 7); g.fill();
+    g.strokeStyle = '#FFCC80'; g.lineWidth = 2; g.beginPath(); g.moveTo(6, 4); g.quadraticCurveTo(13, -2, 11, -12); g.stroke();
+    g.fillStyle = '#fff'; g.fillRect(-4, 1, 2.5, 2.5); g.fillRect(1.5, 1, 2.5, 2.5);
+  } else if (type === 'double') {
+    g.fillStyle = '#E040FB'; g.font = '900 15px Lilita One, system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('2×', 0, -3);
+    g.fillStyle = '#FFD54F'; g.font = '900 9px Lilita One, system-ui'; g.fillText('₦₦', 0, 8);
   }
   g.restore();
 }
@@ -360,5 +382,27 @@ export function busStopSprite(text) {
     g.fillStyle = '#1565C0'; g.fillRect(0, 0, w - 5, 14);
     g.fillStyle = '#fff'; g.font = '9px Lilita One, system-ui'; g.textAlign = 'center'; g.fillText('BUS STOP', (w - 5) / 2, 10);
     g.save(); g.translate((w - 5) / 2, 48); g.rotate(-Math.PI / 2); g.fillStyle = '#1565C0'; g.font = '13px Lilita One, system-ui'; g.fillText(text, 0, 4); g.restore();
+  });
+}
+
+export function floodSprite() {
+  return sprite('flood', 84, 112, (g, w, h) => {
+    g.fillStyle = 'rgba(92,72,48,.7)'; g.beginPath(); g.ellipse(w / 2, h / 2, w / 2 - 1, h / 2 - 1, 0, 0, 7); g.fill();
+    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(60,110,150,.92)'); gr.addColorStop(1, 'rgba(90,140,170,.92)');
+    g.fillStyle = gr; g.beginPath(); g.ellipse(w / 2, h / 2, w / 2 - 7, h / 2 - 8, 0, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1.6;
+    for (const [x, y, r] of [[28, 30, 9], [54, 52, 11], [34, 78, 8]]) { g.beginPath(); g.arc(x, y, r, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(30, 22, 11, 3, -0.2, 0, 7); g.fill();
+  });
+}
+export function towerSprite(i) { // CMS / Marina high-rise roof seen from above
+  const W = 56, H = 80 + (i % 3) * 22;
+  return sprite('tower' + i, W, H, (g, w, h) => {
+    g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(5, 5, w - 5, h - 5);
+    const c = ['#5f7d95', '#8a9aa8', '#4f6b7a', '#9aa7b0'][i % 4];
+    g.fillStyle = c; g.fillRect(0, 0, w - 5, h - 5);
+    g.fillStyle = 'rgba(255,255,255,.16)'; for (let y = 6; y < h - 10; y += 9) g.fillRect(4, y, w - 13, 3);
+    g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(w - 13, 0, 8, h - 5);
+    g.fillStyle = '#c8ccd0'; g.fillRect(12, 10, 14, 10); g.fillStyle = '#e53935'; g.beginPath(); g.arc(30, h - 18, 2.5, 0, 7); g.fill();
   });
 }

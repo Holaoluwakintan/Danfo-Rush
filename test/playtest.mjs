@@ -119,6 +119,62 @@ await ev(() => { const g = __danfo.game; g.pw.magnet = 0; g.pw.express = 0; g.pw
 await wait(900);
 ok('agbero collects 20% of run naira', (await ev(() => __danfo.game.coins)) === 80, await ev(() => __danfo.game.coins));
 
+// ==== v1.1: new power-ups, LASTMA fine, flood, zones, voice ====
+await clearStage();
+await ev(() => { const g = __danfo.game; g.invuln = 0; for (const k in g.pw) g.pw[k] = 0; const o1 = g.vehicle(g.bus.lane, g.busY - 330); o1.vs = o1.vsCur = 0; o1.weave = false; const o2 = g.vehicle((g.bus.lane + 1) % 3, g.busY - 420); o2.vs = o2.vsCur = 0; o2.weave = false; g.power('agbero'); });
+await wait(250);
+st = await ev(() => { const g = __danfo.game; return { cleared: g.cleared, flying: g.objs.filter(o => o.flying).length, mode: g.mode }; });
+ok('Agbero power clears the cars ahead', st.cleared >= 2 && st.mode === 'play', st);
+await clearStage();
+await ev(() => { const g = __danfo.game; g.pw.agbero = 0; g.power('double'); g.coins = 0; g.obj('passenger', g.bus.lane, g.busY - 120, { w: 34, h: 34, collect: true, bubble: 'CMS!', person: true }); });
+await wait(700);
+st = await ev(() => ({ c: __danfo.game.coins, p: __danfo.game.pw.double }));
+ok('Double Fare pays ₦20 per passenger', st.c === 20 && st.p > 0, st);
+await clearStage();
+await ev(() => { const g = __danfo.game; g.pw.double = 0; g.power('express'); });
+await wait(400);
+st = await ev(() => ({ boost: __danfo.game.boost, name: document.querySelector('#hPowers').textContent, bar: !!document.querySelector('#hPowers .tbar i') }));
+ok('NEPA Light boosts speed + shows icon and timer bar', st.boost > 1.3 && /NEPA/.test(st.name) && st.bar, st);
+await ev(() => { const g = __danfo.game; const o = g.vehicle(g.bus.lane, g.busY - 150); o.vs = o.vsCur = 0; o.weave = false; });
+await wait(600);
+ok('NEPA Light = invincible (smashes traffic)', (await ev(() => __danfo.game.mode)) === 'play');
+await clearStage();
+await ev(() => { const g = __danfo.game; for (const k in g.pw) g.pw[k] = 0; g.invuln = 0; g.coins = 100; g.slowT = 0; g.hazard('lastma', g.bus.lane, g.busY - 130); });
+await wait(800);
+st = await ev(() => ({ mode: __danfo.game.mode, coins: __danfo.game.coins, fines: __danfo.game.fines, slow: __danfo.game.slowT }));
+ok('LASTMA fines you (coins) + slows you, run continues', st.mode === 'play' && st.coins === 85 && st.fines === 1, st);
+await clearStage();
+await ev(() => { const g = __danfo.game; g.slowT = 0; g.hazard('flood', g.bus.lane, g.busY - 140); });
+await page.waitForFunction(() => __danfo.game.slowT > 0, null, { timeout: 3000 }).catch(() => {});
+st = await ev(() => ({ slow: __danfo.game.slowT, mode: __danfo.game.mode }));
+ok('flood patch slows the bus', st.slow > 0.5 && st.mode === 'play', st);
+// zones: jump the odometer to each zone and check banner + overhead sign
+const zoneNames = [];
+for (const zi of [1, 2, 3, 4]) {
+  await clearStage();
+  await ev(zi => { const g = __danfo.game; g.dist = (zi * 700 + 5) * 30; }, zi);
+  await wait(250);
+  const zs = await ev(() => ({ banner: document.querySelector('#zoneBanner').classList.contains('show'), name: document.querySelector('#zoneBanner .zb-n').textContent, sign: __danfo.game.gantry && __danfo.game.gantry.text, zone: __danfo.game.zone }));
+  zoneNames.push(zs);
+  if (zi === 2) { await wait(900); await shot('04-zone-third-mainland'); }
+  if (zi === 1) { await ev(() => { const g = __danfo.game; g.nextRow = g.dist + 50; }); await wait(1300); await shot('05-zone-oshodi'); }
+}
+await ev(() => { const g = __danfo.game; g.dist = 300 * 30; g.objs.length = 0; }); // back to a plausible odometer so the run still passes server anti-cheat
+ok('zone banners: Oshodi, Third Mainland Bridge, CMS / Marina, Lekki Toll Gate', zoneNames.map(z => z.name).join('|') === 'Oshodi|Third Mainland Bridge|CMS / Marina|Lekki Toll Gate' && zoneNames.every(z => z.banner), zoneNames);
+ok('bridge sign shows the full "THIRD MAINLAND BRIDGE"', zoneNames[1].sign === 'THIRD MAINLAND BRIDGE', zoneNames[1].sign);
+await ev(() => { __danfo.save.seenPowers = []; const g = __danfo.game; g.objs.length = 0; g.spawnPickup('power'); });
+await wait(200);
+st = await ev(() => ({ show: document.querySelector('#pwHint').classList.contains('show'), txt: document.querySelector('#pwHint .ph-t').textContent, seen: __danfo.save.seenPowers.length }));
+ok('first-time power-up tip appears', st.show && st.txt.length > 10 && st.seen === 1, st);
+await ev(() => { const g = __danfo.game; g.objs.length = 0; __danfo.save.seenPowers = ['shield', 'magnet', 'express', 'jerry', 'agbero', 'double']; document.querySelector('#pwHint').classList.remove('show'); g.spawnPickup('power'); });
+await wait(200);
+ok('tip does not repeat once seen', !(await ev(() => document.querySelector('#pwHint').classList.contains('show'))));
+st = await ev(() => ({ ...__danfo.voiceStats }));
+ok('conductor voice clips lazy-loaded after first run', st.loaded >= 8, st);
+const sizes = await ev(async () => { const out = {}; for (const k of ['oshodi', 'owa', 'change', 'wole', 'owao', 'near']) { const r = await fetch('/voice/' + k + '.mp3'); out[k] = (await r.arrayBuffer()).byteLength; } return out; });
+ok('every voice clip is under 30 KB', Object.values(sizes).every(n => n > 3000 && n < 30000), sizes);
+
+
 // ---- pause ----
 await page.keyboard.press('p'); await wait(200);
 const pT = await ev(() => __danfo.game.t); await wait(500);
@@ -200,6 +256,32 @@ await page.click('#btnHome', { force: true }); await wait(300);
 await page.goto(url + '?c=5000&n=Ada', { waitUntil: 'load' }); await wait(900);
 const ban = await page.textContent('#challengeBanner');
 ok('challenge link shows "beat 5,000" banner', /Ada/.test(ban) && /5,000/.test(ban), ban);
+
+
+// ---- v1.1: toast never covers the game-over card ----
+await page.goto(url, { waitUntil: 'load' }); await page.waitForFunction(() => window.__danfo && __danfo.game); await wait(900);
+if (await ev(() => document.querySelector('#streak').classList.contains('show'))) { await page.click('#btnClaim', { force: true }); await wait(300); }
+await page.click('#btnPlay', { force: true }); await page.waitForFunction(() => __danfo.game.mode === 'play');
+await clearStage();
+await ev(() => { const g = __danfo.game; g.hooks.onEvent('toast', { text: 'Go-slow ahead! 🚦', kind: 'warn' }); g.invuln = 0; for (const k in g.pw) g.pw[k] = 0; const o = g.vehicle(g.bus.lane, g.busY - 150); o.vs = o.vsCur = 0; o.weave = false; });
+await page.waitForFunction(() => __danfo.game.mode === 'over', null, { timeout: 5000 }); await wait(400);
+await page.click('#btnAd', { force: true }).catch(() => {}); await wait(250);
+st = await ev(() => { const c = document.querySelector('#over .card').getBoundingClientRect(); const ts = [...document.querySelectorAll('#toasts .toast')].map(t => t.getBoundingClientRect()); return { n: ts.length, overlap: ts.some(t => !(t.bottom <= c.top || t.top >= c.bottom || t.right <= c.left || t.left >= c.right)) }; });
+ok('no toast overlaps the game-over card', !st.overlap, st);
+// ---- v1.1: daily challenges + streak bonus + claim screen ----
+st = await ev(() => { const ms = __danfo.missions(); return { n: ms.list.length, ids: ms.list.map(m => m.id), fresh: ms.list.filter(m => ['carry', 'zone', 'nearrow'].includes(m.id)).length }; });
+ok('3 daily challenges, 2 of them Lagos challenges', st.n === 3 && st.fresh >= 2, st);
+await ev(() => { const ms = __danfo.missions(); for (const m of ms.list) { m.done = true; m.claimed = false; m.prog = m.n; } __danfo.save.streak = 3; });
+await page.click('#btnHome', { force: true }); await wait(400);
+await ev(() => document.querySelector('[data-open="missions"]').click()); await wait(600);
+st = await ev(() => ({ title: document.querySelector('#missions h2').textContent, ready: document.querySelectorAll('#missionList .claim.ready').length, bonus: document.querySelector('#streakBonus').textContent }));
+ok('claim screen: Daily Challenges with 3 claimable + streak bonus', /Challenges/.test(st.title) && st.ready === 3 && /\+30%/.test(st.bonus), st);
+await shot('06-daily-challenges');
+const cb = await ev(() => __danfo.save.coins);
+const r0 = await ev(() => __danfo.missions().list[0].reward);
+await ev(() => document.querySelector('#missionList .claim.ready').click()); await wait(300);
+ok('claim pays reward + 30% streak bonus', (await ev(() => __danfo.save.coins)) - cb === Math.round(r0 * 1.3), { got: (await ev(() => __danfo.save.coins)) - cb, base: r0 });
+await ev(() => document.querySelector('#missions .close').click()); await wait(300);
 
 ok('no JS errors during the whole session', errs.length === 0, errs.slice(0, 5));
 const out = { url, nick, when: new Date().toISOString(), failed, passed: results.filter(r => r.pass).length, results, fps: { normal: fpsNormal, cpu4x: fpsThrottled, cpu4xAfterAdapt: fpsThrottled2 }, restartMs: Math.round(restartMs), device: await ev(() => __danfo.save.device), totalMs: Date.now() - t0 };

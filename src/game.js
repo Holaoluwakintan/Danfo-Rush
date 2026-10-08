@@ -1,5 +1,5 @@
 import * as A from './art.js';
-import { sfx, setIntensity } from './audio.js';
+import { sfx, setIntensity, voice, VOICE_LINES } from './audio.js';
 
 export const LW = 400;
 const ROAD_L = 64, ROAD_R = 336, LANE_W = (ROAD_R - ROAD_L) / 3;
@@ -8,13 +8,16 @@ const PXM = 30;            // px per metre
 const JUMP = 0.62;         // jump duration (s)
 const BUS_W = 42;          // hitbox width
 const SEG = 160;           // ground segment height
+// Route rotates as distance grows. w = hazard weights [vehicle, pothole, lastma, agbero, flood]; ok = okada share of vehicles.
 export const ZONES = [
-  { id: 'city', name: 'Ojuelegba' },
-  { id: 'market', name: 'Oshodi' },
-  { id: 'bridge', name: 'Third Mainland Bridge' },
-  { id: 'lekki', name: 'Lekki' },
+  { id: 'city', name: 'Ojuelegba', emoji: '📍', sub: 'Under the flyover, Surulere side', w: [0.52, 0.16, 0.1, 0.1, 0.12], ok: 0.22 },
+  { id: 'market', name: 'Oshodi', emoji: '🛒', sub: 'Market crowd under the bridge. Watch the agberos!', w: [0.46, 0.08, 0.06, 0.28, 0.12], ok: 0.4, vo: 'oshodi' },
+  { id: 'bridge', name: 'Third Mainland Bridge', emoji: '🌉', sub: '11.8 km over the lagoon. Potholes dey!', w: [0.58, 0.32, 0, 0, 0.1], ok: 0.12, vo: 'third' },
+  { id: 'marina', name: 'CMS / Marina', emoji: '🏙️', sub: 'Island traffic. LASTMA everywhere!', w: [0.5, 0.08, 0.26, 0.06, 0.1], ok: 0.18, vo: 'cms' },
+  { id: 'lekki', name: 'Lekki Toll Gate', emoji: '🌴', sub: 'Okadas swerving. Flood don cover road!', w: [0.5, 0.08, 0.08, 0.04, 0.3], ok: 0.42, vo: 'lekki' },
 ];
-const ZONE_M = 1000;
+export const ZONE_M = 700;
+const STOP_VO = ['oshodi', 'owa', 'change', 'wole', 'owao'];
 const SHOUTS = ['Oshodi! Oshodi!', 'Enter with your change o!', 'Owa o!', 'Shift body!', 'CMS! Obalende!', 'Wole! Wole!', 'Ojuelegba! Straight!', 'No change o!', 'Yaba! Yaba!', 'Ikeja along!'];
 const NEAR_SHOUTS = ['Driver, you wan kill us?!', 'Haba! Gently!', 'Jesu! Driver!', 'Ehen! Na driver be dis!', 'My heart don cut!'];
 const STOPS = ['Oshodi!', 'CMS!', 'Ikeja!', 'Yaba!', 'Obalende!', 'Ajah!', 'Mile 2!', 'Lekki!'];
@@ -38,7 +41,7 @@ export class Game {
     this.mode = 'attract'; this.autopilot = true; this.timeScale = 1; this.shakeAmp = 0;
     this.dprCap = Math.min(window.devicePixelRatio || 1, (navigator.deviceMemory && navigator.deviceMemory <= 4) ? 1.75 : 2); this.quality = this.dprCap;
     this.frameTimes = []; this.fps = 60; this.shakeOn = true; this.reduced = false; this.haptics = true;
-    this.skin = A.SKINS[0]; this.durs = { shield: 6, magnet: 7, express: 4, jerry: 8 };
+    this.skin = A.SKINS[0]; this.durs = { shield: 6, magnet: 7, express: 4, jerry: 8, agbero: 1.6, double: 8 };
     this.resize(); this.reset(true);
     window.addEventListener('resize', () => this.resize());
   }
@@ -73,7 +76,8 @@ export class Game {
     for (const p of this.parts) p.life = 0;
     this.t = 0; this.dist = 0; this.speed = 380; this.score = 0; this.coins = 0; this.passengers = 0; this.near = 0; this.jumps = 0;
     this.smashes = 0; this.powersUsed = 0; this.combo = 0; this.comboT = 0; this.mult = 1; this.maxMult = 1; this.fuel = 100;
-    this.pw = { shield: 0, magnet: 0, express: 0, jerry: 0 }; this.invuln = 0; this.slowT = 0; this.boost = 1; this.dying = 0;
+    this.pw = { shield: 0, magnet: 0, express: 0, jerry: 0, agbero: 0, double: 0 }; this.invuln = 0;
+    this.nearRow = 0; this.maxNearRow = 0; this.lastNearT = -99; this.zoneMax = 0; this.fines = 0; this.cleared = 0; this.overpass = []; this.nextOverpass = 0; this.gantry = null; this.slowT = 0; this.boost = 1; this.dying = 0;
     this.bus = { lane: 1, x: laneX(1), jumpT: 0, tilt: 0, laneT: 0 };
     this.nextRow = 500; this.nextFuel = 1100; this.nextPower = 2400; this.zone = -1; this.revived = 0; this.lastLowBeep = 0;
     this.shout = null; this.coinChain = 0; this.coinChainT = 0; this.tut = null; this.deathReason = null; this.timeScale = 1;
@@ -85,7 +89,7 @@ export class Game {
   start(tutorial) {
     this.reset(false); this.runStart = performance.now();
     if (tutorial) { this.tut = { step: 0, t: 0 }; this.nextRow = 1e9; this.nextFuel = 1e9; this.nextPower = 1e9; }
-    this.say('Oya, make we go!', 1.4); sfx.horn();
+    this.say('Oya, make we go!', 1.4); sfx.horn(); voice('go', 0, true);
   }
   revive() {
     for (const o of this.objs) if (o.y > -60 && o.y < this.LH + 80 && !o.collect) o.dead = true;
@@ -97,7 +101,7 @@ export class Game {
   stats() {
     return { score: Math.floor(this.score), coins: this.coins, distance: Math.floor(this.dist / PXM), passengers: this.passengers,
       near: this.near, jumps: this.jumps, smashes: this.smashes, powers: this.powersUsed, maxMult: this.maxMult,
-      duration: Math.round(this.t * 1000), reason: this.deathReason };
+      duration: Math.round(this.t * 1000), reason: this.deathReason, nearRow: this.maxNearRow, zoneIdx: this.zoneMax, fines: this.fines, cleared: this.cleared };
   }
   // ---------- input ----------
   move(dir) {
@@ -123,7 +127,8 @@ export class Game {
     this.objs.push(o); return o;
   }
   vehicle(lane, y, slow) {
-    const r = Math.random(), d = this.diff();
+    const d = this.diff(), zk = ZONES[Math.max(0, this.zone)].ok || 0.22;
+    let r = Math.random(); if (!slow && Math.random() < zk) r = 0.4; // zone-weighted okada share
     let o;
     if (r < 0.34) o = this.obj('car', lane, y, { spr: A.carSprite((Math.random() * 8) | 0), w: 50, h: 92, vs: slow ? 0.04 : rnd(0.12, 0.3) });
     else if (r < 0.56) o = this.obj('okada', lane, y, { spr: A.okadaSprite((Math.random() * 4) | 0), w: 24, h: 56, vs: rnd(0.25, 0.4), weave: !slow && Math.random() < 0.35 + d * 0.3 });
@@ -135,7 +140,9 @@ export class Game {
   hazard(kind, lane, y) {
     if (kind === 'pothole') return this.obj('pothole', lane, y, { spr: A.potholeSprite((Math.random() * 3) | 0), w: 50, h: 34, deadly: true, jumpable: true, ground: true, reason: 'pothole' });
     if (kind === 'puddle') return this.obj('puddle', lane, y, { spr: A.puddleSprite(), w: 62, h: 42, jumpable: true, ground: true, soft: true });
-    if (kind === 'lastma') return this.obj('lastma', lane, y, { spr: A.lastmaSprite(), w: 30, h: 30, deadly: true, reason: 'lastma', person: true });
+    if (kind === 'flood') return this.obj('flood', lane, y, { spr: A.floodSprite(), w: 70, h: 96, jumpable: true, ground: true, soft: true, flood: true });
+    // LASTMA no longer ends the run: drive into him and he fines you (coins) and slows you down
+    if (kind === 'lastma') return this.obj('lastma', lane, y, { spr: A.lastmaSprite(), w: 30, h: 30, fine: true, person: true, bubble: 'Park well!' });
     if (kind === 'agbero') { const side = lane === 0 ? -1 : lane === 2 ? 1 : (Math.random() < 0.5 ? -1 : 1); return this.obj('agbero', lane, y, { x: laneX(lane) + side * 34, drift: -side * 22, w: 30, h: 30, agbero: true, person: true }); }
   }
   coinLine(lane, y, n, arc) {
@@ -177,11 +184,12 @@ export class Game {
       const nHaz = Math.min(others.length, Math.random() < 0.18 + d * 0.5 ? 2 : 1);
       for (let i = 0; i < nHaz; i++) {
         const l = others[i]; const k = Math.random(); let o;
-        if (k < 0.5) { o = this.vehicle(l, y); if (nHaz > 1) o.weave = false; }
-        else if (k < 0.66) this.hazard('pothole', l, y);
-        else if (k < 0.76) this.hazard('lastma', l, y);
-        else if (k < 0.86) this.hazard('agbero', l, y);
-        else this.hazard('puddle', l, y);
+        const w = ZONES[Math.max(0, this.zone)].w;
+        if (k < w[0]) { o = this.vehicle(l, y); if (nHaz > 1) o.weave = false; }
+        else if (k < w[0] + w[1]) this.hazard('pothole', l, y);
+        else if (k < w[0] + w[1] + w[2]) this.hazard('lastma', l, y);
+        else if (k < w[0] + w[1] + w[2] + w[3]) this.hazard('agbero', l, y);
+        else this.hazard(w[4] > 0.2 || (w[4] > 0.05 && Math.random() < 0.35) ? 'flood' : 'puddle', l, y);
       }
       const c = Math.random();
       if (c < 0.45) this.coinLine(open, y + 20, 5 + ((Math.random() * 3) | 0), Math.random() < 0.2);
@@ -193,7 +201,12 @@ export class Game {
     const lanes = [0, 1, 2].filter(l => this.laneFree(l, -120, 200)); if (!lanes.length) return false;
     const l = pick(lanes);
     if (kind === 'fuel') this.obj('fuel', l, -120, { spr: A.fuelSprite(), w: 28, h: 30, collect: true });
-    else { const types = ['shield', 'magnet', 'express', 'jerry']; const t = pick(types); this.obj('power', l, -120, { ptype: t, spr: A.powerSprite(t), w: 40, h: 40, collect: true }); }
+    else {
+      const types = ['shield', 'magnet', 'express', 'jerry', 'agbero', 'double', 'express', 'double'];
+      let t = pick(types); if (t === this.lastPw) t = pick(types); this.lastPw = t;
+      this.obj('power', l, -120, { ptype: t, spr: A.powerSprite(t), w: 40, h: 40, collect: true });
+      this.hooks.onEvent('powerSeen', { type: t });
+    }
     return true;
   }
   addSeg(y, zone) { this.segs.push({ y, z: zone }); }
@@ -210,6 +223,9 @@ export class Game {
           const k = Math.random(); x = cx + rnd(-6, 6);
           spr = k < 0.45 ? A.umbrellaSprite((Math.random() * 4) | 0) : k < 0.8 ? A.stallSprite((Math.random() * 3) | 0) : A.passengerSprite((Math.random() * 6) | 0);
           gap = rnd(36, 60);
+        } else if (z === 'marina') {
+          if (side) { spr = A.towerSprite((Math.random() * 4) | 0); x = LW - (spr.lw / 2) + 2; gap = spr.lh + rnd(6, 16); }
+          else { spr = A.lampSprite(); x = ROAD_L - 12; gap = rnd(70, 110); }
         } else if (z === 'lekki') {
           spr = Math.random() < 0.55 ? A.palmSprite((Math.random() * 3) | 0) : A.flatRoof((Math.random() * 4) | 0); gap = rnd(60, 110); x = cx + rnd(-4, 4);
         } else {
@@ -245,6 +261,9 @@ export class Game {
   power(t) {
     this.pw[t] = this.durs[t]; this.powersUsed++; sfx.power(); this.buzz(30);
     if (t === 'jerry') this.fuel = 100;
+    if (t === 'agbero') { this.agberoClear(); this.say('Agbero don clear road!', 1.4); }
+    if (t === 'express') this.say('NEPA bring light! Oya fly!', 1.4);
+    if (t === 'double') this.say('Double fare! Owo ti de!', 1.4);
     this.pop(this.bus.x, this.busY - 100, A.POWERS[t].short.toUpperCase() + '!', A.POWERS[t].color, true);
     this.hooks.onEvent('power', { type: t });
     this.burst(this.bus.x, this.busY, 22, A.POWERS[t].color, 220, 5);
@@ -257,7 +276,7 @@ export class Game {
   tutUpdate(dt) {
     const tt = this.tut; tt.t += dt; const b = this.bus;
     if (tt.step === 0) {
-      if (!tt.spawned && tt.t > 0.8) { tt.o = this.vehicle(b.lane, -120); tt.o.vs = tt.o.vsCur = 0.1; tt.spawned = true; this.hooks.onEvent('tutorial', { step: 0 }); }
+      if (!tt.spawned && tt.t > 0.8) { tt.o = this.vehicle(b.lane, -120); tt.o.vs = tt.o.vsCur = 0.1; tt.o.weave = false; tt.spawned = true; this.hooks.onEvent('tutorial', { step: 0 }); }
       if (tt.spawned && !tt.wait && tt.o.y > this.busY - 330 && tt.o.lane === b.lane) { tt.wait = true; this.timeScale = 0.08; this.hooks.onEvent('tutorial', { step: 0, prompt: true }); }
       if (tt.spawned && !tt.wait && tt.o.lane !== b.lane && tt.o.y > this.busY - 330) this.tutNext();
     } else if (tt.step === 1) {
@@ -287,7 +306,7 @@ export class Game {
         if (l < 0) continue;
         if (o.deadly && !o.jumpable) { danger[l] += gap < 0 ? 1e5 : 1e4 / Math.max(15, gap + 40); near[l] = Math.min(near[l], gap); }
         else if (o.jumpable && o.deadly) danger[l] += gap < 0 ? 150 : 300 / Math.max(15, gap + 40);
-        else if (o.jumpable || o.agbero) danger[l] += 300 / Math.max(20, gap + 60);
+        else if (o.jumpable || o.agbero || (o.fine && !o.hitDone)) danger[l] += 300 / Math.max(20, gap + 60);
         else if (o.collect) good[l] += (o.kind === 'power' || o.kind === 'fuel' ? 40 : o.kind === 'passenger' ? 25 : 6) / Math.max(30, gap + 60) * 60;
       }
       if (o.jumpable && o.deadly && o.lane === b.lane && b.jumpT === 0 && gap > -25 && gap < 40 + this.speed * this.boost * 0.09) this.jump();
@@ -328,14 +347,18 @@ export class Game {
     if (this.shout) { this.shout.t -= dt; if (this.shout.t <= 0) this.shout = null; }
     if (this.coinChainT > 0) { this.coinChainT -= dt; if (this.coinChainT <= 0) this.coinChain = 0; }
     // zone
-    const zi = Math.floor(dm / ZONE_M) % ZONES.length;
+    const zAbs = Math.floor(dm / ZONE_M), zi = zAbs % ZONES.length;
+    if (play) this.zoneMax = Math.max(this.zoneMax, zAbs);
     if (zi !== this.zone) {
-      const first = this.zone === -1; this.zone = zi;
-      if (!first || play) { this.decor.push({ x: ROAD_R + 34, y: -60, spr: A.signSprite(ZONES[zi].name.split(' ')[0].toUpperCase()), sign: true }); }
-      if (ZONES[zi].id === 'lekki') this.gantry = { y: -200 };
-      if (play && !first) this.hooks.onEvent('zone', { name: ZONES[zi].name, id: ZONES[zi].id });
-      if (first && play) this.hooks.onEvent('zone', { name: ZONES[zi].name, id: ZONES[zi].id });
+      const first = this.zone === -1; this.zone = zi; const Z = ZONES[zi];
+      // overhead gantry sign with the full zone name (Lekki gets the toll plaza)
+      if (!first) this.gantry = { y: -200, text: Z.id === 'lekki' ? 'LEKKI TOLL PLAZA' : Z.name.toUpperCase(), toll: Z.id === 'lekki' };
+      if (play) { this.hooks.onEvent('zone', { name: Z.name, id: Z.id, emoji: Z.emoji, sub: Z.sub, first }); if (!first && Z.vo && voice(Z.vo, 0, true)) this.say(VOICE_LINES[Z.vo], 1.6); }
     }
+    // Oshodi: the market sits under the bridge, so overpasses sweep over the bus
+    if (ZONES[zi].id === 'market' && this.dist > this.nextOverpass) { this.overpass.push({ y: -140 }); this.nextOverpass = this.dist + rnd(700, 1100); }
+    for (const op of this.overpass) op.y += dy;
+    if (this.overpass.length && this.overpass[0].y > this.LH + 160) this.overpass.shift();
     // ground + decor scroll
     for (const s of this.segs) s.y += dy;
     while (this.segs.length && this.segs[0].y - SEG > this.LH) this.segs.shift();
@@ -348,6 +371,7 @@ export class Game {
     if (!this.tut && this.dying <= 0) {
       if (this.dist >= this.nextRow) { this.spawnRow(); this.nextRow = this.dist + Math.max(240, v * (0.66 - this.diff() * 0.12)); }
       if (play && this.dist >= this.nextFuel) { if (this.spawnPickup('fuel')) this.nextFuel = this.dist + PXM * rnd(260, 360); else this.nextFuel += 80; }
+      if (this.pw.agbero > 0) this.agberoClear();
       if (this.dist >= this.nextPower) { if (this.spawnPickup('power')) this.nextPower = this.dist + PXM * rnd(380, 560); else this.nextPower += 80; }
     }
     // bus motion
@@ -387,8 +411,9 @@ export class Game {
       if (hit) {
         if (o.collect) this.collect(o);
         else if (o.jumpable && (air || o.cleared)) { if (!o.cleared) { o.cleared = true; if (o.deadly) { this.jumps++; this.addCombo(20, 'Clean jump', o.x, o.y - 30); } } }
-        else if (o.soft) { if (!o.hitDone) { o.hitDone = true; if (!ghost) { this.slowT = 0.8; this.breakCombo(); sfx.splash(); this.say('Ah! Water don enter!', 1); } this.burst(o.x, o.y, 18, 'rgba(120,170,210,.9)', 200, 5); } }
+        else if (o.soft) { if (!o.hitDone) { o.hitDone = true; if (!ghost) { this.slowT = o.flood ? 1.5 : 0.8; this.breakCombo(); sfx.splash(); this.say(o.flood ? 'Flood don cover road o!' : 'Ah! Water don enter!', 1.1); } this.burst(o.x, o.y, o.flood ? 30 : 18, 'rgba(120,170,210,.9)', 220, 5); } }
         else if (o.agbero) { if (!o.hitDone) { o.hitDone = true; this.agberoHit(o, ghost); } }
+        else if (o.fine) { if (!o.hitDone) { o.hitDone = true; this.lastmaHit(o, ghost); } }
         else if (o.deadly) {
           if (ghost) this.smash(o);
           else if (this.pw.shield > 0) { this.pw.shield = 0; this.invuln = 1.2; sfx.shieldPop(); this.smash(o); this.pop(b.x, this.busY - 90, 'Pure water saved you!', '#81D4FA'); this.buzz(60); }
@@ -396,7 +421,13 @@ export class Game {
         }
       } else if (o.deadly && !o.passed && o.y - (o.h || 30) / 2 > bBot) {
         o.passed = true;
-        if (o.nearArm && play) { this.near++; this.addCombo(25, 'NEAR MISS', o.x, this.busY - 40); sfx.near(); this.shake(3); this.buzz(15); if (Math.random() < 0.4) this.say(pick(NEAR_SHOUTS), 1.1); }
+        if (o.nearArm && play) {
+          this.near++; this.addCombo(25, 'NEAR MISS', o.x, this.busY - 40); sfx.near(); this.shake(3); this.buzz(15);
+          this.nearRow = this.t - this.lastNearT < 3 ? this.nearRow + 1 : 1; this.lastNearT = this.t; this.maxNearRow = Math.max(this.maxNearRow, this.nearRow);
+          if (this.nearRow >= 2) this.pop(o.x, this.busY - 70, this.nearRow + ' IN A ROW!', '#FFAB40');
+          const vk = Math.random() < 0.7 ? 'near' : 'near2';
+          if (Math.random() < 0.55 && voice(vk, 7)) this.say(VOICE_LINES[vk], 1.3); else if (Math.random() < 0.4) this.say(pick(NEAR_SHOUTS), 1.1);
+        }
       }
     }
     if (objs.length > 60 || (objs.length && objs[0].dead)) this.objs = objs.filter(o => !o.dead);
@@ -404,7 +435,8 @@ export class Game {
     for (const p of this.parts) if (p.life > 0) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt + dy * 0.6; p.vx *= 0.96; p.vy *= 0.96; }
     for (const p of this.pops) { p.life -= dt; p.y -= 50 * dt; }
     if (this.pops.length && this.pops[0].life <= 0) this.pops = this.pops.filter(p => p.life > 0);
-    if (this.pw.express > 0 && Math.random() < 0.8) this.burst(b.x + rnd(-14, 14), this.busY + 58, 1, 'rgba(0,230,118,.8)', 40, 5, 0.35);
+    if (this.pw.express > 0 && Math.random() < 0.8) this.burst(b.x + rnd(-14, 14), this.busY + 58, 1, 'rgba(255,235,59,.85)', 40, 5, 0.35);
+    if (this.pw.double > 0 && Math.random() < 0.12) this.burst(b.x + rnd(-20, 20), this.busY - 40, 1, '#E040FB', 60, 4, 0.5);
     else if (v > 700 && Math.random() < 0.15) this.burst(b.x + rnd(-18, 18), this.busY + 58, 1, 'rgba(210,200,180,.5)', 30, 4, 0.4);
     this.shakeAmp *= Math.pow(0.02, dt);
     if (play) this.hooks.onHud(this);
@@ -412,12 +444,30 @@ export class Game {
   collect(o) {
     o.dead = true; const b = this.bus;
     if (o.kind === 'coin') {
-      this.coins++; this.score += this.mult; this.coinChain++; this.coinChainT = 0.5; sfx.coin(this.coinChain); this.burst(o.x, o.y, 5, '#FFD54F', 90, 3, 0.35);
+      this.coins += this.fare(1); this.score += this.mult; this.coinChain++; this.coinChainT = 0.5; sfx.coin(this.coinChain); this.burst(o.x, o.y, 5, '#FFD54F', 90, 3, 0.35);
     } else if (o.kind === 'passenger') {
-      this.passengers++; this.coins += 10; sfx.passenger(); this.addCombo(50, 'Passenger', o.x, o.y - 30); this.say(pick(SHOUTS), 1.3); this.buzz(20);
+      this.passengers++; const f = this.fare(10); this.coins += f; sfx.passenger(); this.addCombo(50, f > 10 ? 'Double fare!' : 'Passenger', o.x, o.y - 30); this.buzz(20);
+      const vk = pick(STOP_VO); if (Math.random() < 0.7 && voice(vk, 6)) this.say(VOICE_LINES[vk], 1.4); else this.say(pick(SHOUTS), 1.3);
       this.burst(o.x, o.y, 12, '#FF80AB', 140, 4);
     } else if (o.kind === 'fuel') { this.fuel = Math.min(100, this.fuel + 40); sfx.power(); this.pop(o.x, o.y - 20, '+Fuel', '#FF8A65'); this.burst(o.x, o.y, 10, '#FF7043', 120, 4); }
     else if (o.kind === 'power') this.power(o.ptype);
+  }
+  // Double Fare doubles naira. Guard: never let a run's naira outgrow the leaderboard's per-metre cap (coins <= metres + 200).
+  fare(n) { if (this.pw.double > 0) n *= 2; const cap = this.dist / PXM + 190 - this.coins; return Math.max(0, Math.min(n, Math.floor(cap))); }
+  lastmaHit(o, ghost) {
+    if (ghost || this.pw.shield > 0) { this.smash(o); return; }
+    const loss = Math.min(this.coins, Math.max(5, Math.round(this.coins * 0.15)));
+    this.coins -= loss; this.fines++; this.slowT = Math.max(this.slowT, 1.3); this.breakCombo(); sfx.ouch(); this.shake(4); this.buzz(40);
+    this.pop(o.x, o.y - 24, loss ? `LASTMA fine ₦${loss}!` : 'LASTMA warning!', '#FF5252', true); this.say('Oga LASTMA, abeg!', 1.1); o.bubble = 'Oya pay!';
+  }
+  agberoClear() { // Agbero power: everything in the way ahead gets cleared off the road
+    for (const o of this.objs) {
+      if (o.dead || o.flying || o.collect || o.decor || o.ground) continue;
+      if (!(o.deadly || o.fine || o.agbero)) continue;
+      if (o.y > this.busY - 70 || o.y < -160) continue;
+      o.flying = true; o.fl = 0.8; o.rot = 0; o.fvr = o.person ? 0 : rnd(-6, 6); o.fvx = (o.x < LW / 2 ? -1 : 1) * rnd(380, 520); o.fvy = -rnd(60, 160);
+      this.cleared++; this.burst(o.x, o.y, 8, '#FF8A65', 200, 4); if (this.cleared % 3 === 1) this.pop(o.x, o.y, 'Comot!', '#FFAB91');
+    }
   }
   agberoHit(o, ghost) {
     if (this.pw.magnet > 0 || ghost) { o.flee = true; o.drift = (o.x < this.bus.x ? -1 : 1) * 160; this.pop(o.x, o.y - 24, 'Agbero-free!', '#EF9A9A'); return; }
@@ -453,7 +503,8 @@ export class Game {
         g.fillStyle = '#b8bcc2'; g.fillRect(ROAD_L - 8, top, 8, SEG + 1); g.fillRect(ROAD_R, top, 8, SEG + 1);
         g.fillStyle = '#8b9097'; for (let yy = top + ((off) % 40); yy < s.y; yy += 40) { g.fillRect(ROAD_L - 8, yy, 8, 4); g.fillRect(ROAD_R, yy, 8, 4); }
       } else {
-        g.fillStyle = z === 'market' ? '#cfc2a8' : z === 'lekki' ? '#d9d4c7' : '#c9c1b3'; g.fillRect(-10, top, ROAD_L + 10, SEG + 1); g.fillRect(ROAD_R, top, LW - ROAD_R + 10, SEG + 1);
+        g.fillStyle = z === 'market' ? '#cfc2a8' : z === 'lekki' ? '#d9d4c7' : z === 'marina' ? '#b7bdc4' : '#c9c1b3'; g.fillRect(-10, top, ROAD_L + 10, SEG + 1); g.fillRect(ROAD_R, top, LW - ROAD_R + 10, SEG + 1);
+        if (z === 'marina') { g.fillStyle = '#2a7d9c'; g.fillRect(-10, top, 34, SEG + 1); g.fillStyle = 'rgba(255,255,255,.18)'; for (let i = 0; i < 3; i++) g.fillRect(4 + i * 6, top + ((i * 51 + off * 0.3) % SEG), 12, 2); g.fillStyle = '#d8dde2'; g.fillRect(24, top, 3, SEG + 1); }
         if (z === 'lekki') { g.fillStyle = '#7cb35a'; g.fillRect(-10, top, 26, SEG + 1); g.fillRect(LW - 16, top, 26, SEG + 1); }
         g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(ROAD_L - 22, top, 2, SEG + 1); g.fillRect(ROAD_R + 20, top, 2, SEG + 1);
         // black & yellow kerbs
@@ -490,13 +541,13 @@ export class Game {
       if (o.flying) { g.save(); g.translate(o.x, o.y); g.rotate(o.rot); g.globalAlpha = Math.max(0, o.fl); this.draw(o.spr, 0, 0); g.restore(); g.globalAlpha = 1; continue; }
       this.draw(o.spr, o.x, o.y);
       if (o.blinkT > 0 && ((o.blinkT * 10) | 0) % 2) { g.fillStyle = '#FFAB00'; const sd = o.toLane < o.lane ? -1 : 1; g.fillRect(o.x + sd * 12 - 3, o.y - 30, 6, 6); }
-      if (o.bubble && o.kind === 'cop') this.bubble(o.bubble, o.x, o.y - 26);
+      if (o.bubble && (o.kind === 'cop' || (o.kind === 'lastma' && o.y > 60))) this.bubble(o.bubble, o.x, o.y - 26, o.kind === 'lastma' ? '#FFF176' : '#fff');
     }
     // the bus
     const jp = b.jumpT > 0 ? Math.sin(b.jumpT / JUMP * Math.PI) : 0, bs = 1 + jp * 0.28;
     const bus = A.busSprite(this.skin);
     g.drawImage(sh, b.x - 40 + 6 + jp * 18, this.busY - 70 + 8 + jp * 22, 80, 140);
-    if (this.pw.express > 0) { g.fillStyle = 'rgba(0,230,118,.22)'; g.fillRect(b.x - 30, this.busY + 50, 60, 140); g.fillStyle = 'rgba(255,255,255,.5)'; for (let i = 0; i < 6; i++) g.fillRect(ROAD_L + 10 + ((i * 53 + this.dist * 0.7) % (ROAD_R - ROAD_L - 20)), (i * 157 + this.dist * 1.6) % LH, 2, 40); }
+    if (this.pw.express > 0) { const gl = g.createRadialGradient(b.x, this.busY, 10, b.x, this.busY, 110); gl.addColorStop(0, 'rgba(255,241,118,.55)'); gl.addColorStop(1, 'rgba(255,241,118,0)'); g.fillStyle = gl; g.fillRect(b.x - 110, this.busY - 110, 220, 220); g.fillStyle = 'rgba(255,235,59,.22)'; g.fillRect(b.x - 30, this.busY + 50, 60, 140); g.fillStyle = 'rgba(255,255,255,.5)'; for (let i = 0; i < 6; i++) g.fillRect(ROAD_L + 10 + ((i * 53 + this.dist * 0.7) % (ROAD_R - ROAD_L - 20)), (i * 157 + this.dist * 1.6) % LH, 2, 40); }
     const blink = this.invuln > 0 && this.pw.express <= 0 && ((this.invuln * 12) | 0) % 2;
     if (this.dying <= 0 || ((this.dying * 20) | 0) % 2) {
       g.save(); g.translate(b.x, this.busY - jp * 10); g.rotate(b.tilt); g.globalAlpha = blink ? 0.45 : 1; this.draw(bus, 0, 0, bs); g.restore(); g.globalAlpha = 1;
@@ -504,7 +555,8 @@ export class Game {
     if (this.pw.shield > 0) { const a = 0.35 + Math.sin(this.t * 10) * 0.1 - (this.pw.shield < 1.5 ? (((this.pw.shield * 8) | 0) % 2) * 0.2 : 0); g.strokeStyle = `rgba(129,212,250,${a + 0.3})`; g.fillStyle = `rgba(129,212,250,${a * 0.4})`; g.lineWidth = 3; g.beginPath(); g.ellipse(b.x, this.busY, 46 * bs, 74 * bs, 0, 0, 7); g.fill(); g.stroke(); }
     if (this.pw.magnet > 0) { const r = 60 + ((this.t * 90) % 60); g.strokeStyle = `rgba(239,83,80,${0.5 - (r - 60) / 140})`; g.lineWidth = 2.5; g.beginPath(); g.arc(b.x, this.busY, r, 0, 7); g.stroke(); }
     // overhead: Lekki toll gantry
-    if (this.gantry && this.gantry.y > -150 && this.gantry.y < LH + 150) this.drawGantry(this.gantry.y);
+    for (const op of this.overpass) if (op.y > -120 && op.y < LH + 120) this.drawOverpass(op.y);
+    if (this.gantry && this.gantry.y > -150 && this.gantry.y < LH + 150) this.drawGantry(this.gantry.y, this.gantry.text, this.gantry.toll);
     // particles
     for (const p of this.parts) if (p.life > 0) { g.globalAlpha = Math.min(1, p.life / p.max * 1.5); g.fillStyle = p.col; g.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
     g.globalAlpha = 1;
@@ -524,13 +576,30 @@ export class Game {
     g.beginPath(); g.moveTo(x - 4, y + h / 2 - 1); g.lineTo(x, y + h / 2 + 5); g.lineTo(x + 4, y + h / 2 - 1); g.fill();
     g.fillStyle = '#1a1a1a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, x, y + 1);
   }
-  drawGantry(y) {
+  drawOverpass(y) { // Oshodi: concrete bridge deck overhead, pillars on the kerb
     const g = this.g;
+    g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, y + 34, LW, 26);
+    g.fillStyle = '#6d6a66'; g.fillRect(ROAD_L - 30, y + 14, 14, 30); g.fillRect(ROAD_R + 16, y + 14, 14, 30);
+    g.fillStyle = 'rgba(120,116,110,.86)'; g.fillRect(-4, y - 34, LW + 8, 52);
+    g.fillStyle = 'rgba(90,86,80,.9)'; g.fillRect(-4, y - 34, LW + 8, 6); g.fillRect(-4, y + 12, LW + 8, 6);
+    g.fillStyle = 'rgba(255,255,255,.08)'; for (let x = 10; x < LW; x += 46) g.fillRect(x, y - 26, 24, 36);
+    g.fillStyle = '#FFCB05'; g.font = '12px "Lilita One", system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('OSHODI', LW / 2, y - 8);
+  }
+  drawGantry(y, text = 'LEKKI TOLL PLAZA', toll = true) {
+    const g = this.g;
+    if (!toll) { // plain overhead direction sign, full name always fits
+      g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(ROAD_L - 20, y + 18, ROAD_R - ROAD_L + 40, 24);
+      g.fillStyle = '#7d848c'; g.fillRect(ROAD_L - 26, y - 30, 8, 56); g.fillRect(ROAD_R + 18, y - 30, 8, 56); g.fillRect(ROAD_L - 26, y - 6, ROAD_R - ROAD_L + 52, 5);
+      g.fillStyle = '#0B6B3A'; g.beginPath(); g.roundRect(ROAD_L + 4, y - 30, ROAD_R - ROAD_L - 8, 40, 5); g.fill();
+      g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(ROAD_L + 7, y - 27, ROAD_R - ROAD_L - 14, 34, 4); g.stroke();
+      let fs = 17; g.font = fs + 'px "Lilita One", system-ui'; while (g.measureText(text).width > ROAD_R - ROAD_L - 30 && fs > 9) { fs--; g.font = fs + 'px "Lilita One", system-ui'; }
+      g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, LW / 2, y - 9); return;
+    }
     g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(ROAD_L - 30, y + 18, ROAD_R - ROAD_L + 60, 40);
     g.fillStyle = '#e8eaed'; g.fillRect(ROAD_L - 36, y - 26, ROAD_R - ROAD_L + 72, 44);
     g.fillStyle = '#c5c9ce'; for (let x = ROAD_L - 30; x < ROAD_R + 36; x += 22) g.fillRect(x, y - 26, 3, 44);
     g.fillStyle = '#0B6B3A'; g.fillRect(ROAD_L + 40, y - 16, ROAD_R - ROAD_L - 80, 24);
-    g.fillStyle = '#fff'; g.font = '15px "Lilita One", system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('LEKKI TOLL PLAZA', LW / 2, y - 3);
+    g.fillStyle = '#fff'; g.font = '15px "Lilita One", system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, LW / 2, y - 3);
     g.fillStyle = '#9aa0a6'; g.fillRect(ROAD_L - 40, y - 30, 14, 52); g.fillRect(ROAD_R + 26, y - 30, 14, 52);
     g.fillStyle = '#ff5252'; g.fillRect(ROAD_L - 37, y - 24, 8, 8); g.fillStyle = '#69f0ae'; g.fillRect(ROAD_R + 29, y - 24, 8, 8);
   }
