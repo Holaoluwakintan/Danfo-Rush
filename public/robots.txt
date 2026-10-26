@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://danfo-rush-ng.vercel.app/sitemap.xml
